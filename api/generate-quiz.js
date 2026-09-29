@@ -24,10 +24,24 @@ module.exports = async function handler(req, res) {
     });
     const raw = await upstream.text();
     if (!upstream.ok) { console.error("OpenRouter API error", upstream.status, raw.slice(0,1000)); return res.status(502).json({ error:"The AI provider could not generate questions. Please try again." }); }
-    const data = JSON.parse(raw); const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== "string") throw new Error("Empty AI response");
-    const clean = content.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim();
-    const list = JSON.parse(clean).questions;
+    const data = JSON.parse(raw);
+    const message = data.choices?.[0]?.message;
+    let content = message?.content;
+    if (Array.isArray(content)) content = content.map(part => typeof part === "string" ? part : (part?.text || "")).join("\n");
+    if (typeof content !== "string" || !content.trim()) throw new Error("Empty AI response");
+
+    // Models may wrap JSON in markdown or add a short preface.
+    const clean = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    let parsed;
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      const firstBrace = clean.indexOf("{");
+      const lastBrace = clean.lastIndexOf("}");
+      if (firstBrace < 0 || lastBrace <= firstBrace) throw new Error("AI response did not contain a JSON object");
+      parsed = JSON.parse(clean.slice(firstBrace, lastBrace + 1));
+    }
+    const list = parsed?.questions;
     if (!Array.isArray(list) || list.length !== n) throw new Error("Wrong question count");
     const valid = list.every(q => q && typeof q.question === "string" && q.question.trim() && Array.isArray(q.options) && q.options.length === 4 && q.options.every(x => typeof x === "string" && x.trim()) && Number.isInteger(q.correctIndex) && q.correctIndex >= 0 && q.correctIndex < 4 && typeof q.explanation === "string" && q.explanation.trim());
     if (!valid) throw new Error("Invalid question structure");
