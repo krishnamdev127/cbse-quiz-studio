@@ -5,8 +5,8 @@ const ALLOWED_DIFFICULTIES = ["Easy", "Medium", "Hard", "Mixed"];
 module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); return res.status(405).json({ error: "Method not allowed." }); }
-  const key = process.env.NVIDIA_API_KEY;
-  if (!key) return res.status(500).json({ error: "AI service is not configured yet. Add NVIDIA_API_KEY in Vercel Environment Variables." });
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) return res.status(500).json({ error: "AI service is not configured yet. Add OPENROUTER_API_KEY in Vercel Environment Variables." });
   try {
     const { subject, chapter, scope, count, difficulty } = req.body || {};
     if (!ALLOWED_SUBJECTS.includes(subject)) return res.status(400).json({ error: "Select a valid subject." });
@@ -18,12 +18,12 @@ module.exports = async function handler(req, res) {
     const target = scope === "chapter" ? "chapter: " + chapter : "the full Class XII CBSE syllabus";
     const lang = subject === "Hindi" ? "Hindi" : "English";
     const prompt = `Create exactly ${n} original, accurate CBSE Class 12 Humanities MCQs for ${subject}, covering ${target}. Difficulty: ${difficulty}. Language: ${lang}. Align with NCERT/CBSE concepts; do not claim these are official past-paper questions. Make questions distinct. In full-subject mode, spread across relevant chapters and provide chapter for each. Each question needs four plausible options, exactly one correct answer, and a concise explanation. Mixed means a balanced mix of easy, medium, hard. For Hindi, write questions/options in Hindi. Return ONLY JSON: {"questions":[{"question":"...","options":["...","...","...","..."],"correctIndex":0,"explanation":"...","difficulty":"Easy","chapter":"..."}]}`;
-    const upstream = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST", headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: process.env.NVIDIA_MODEL || "z-ai/glm-5.3", messages: [{ role:"system", content:"You are a careful CBSE Class XII question setter. Follow the JSON schema exactly; accuracy matters more than creativity." }, { role:"user", content:prompt }], temperature:0.7, max_tokens:Math.min(7500,n*330), stream:false })
+      body: JSON.stringify({ model: process.env.OPENROUTER_MODEL || "openrouter/free", messages: [{ role:"system", content:"You are a careful CBSE Class XII question setter. Follow the JSON schema exactly; accuracy matters more than creativity." }, { role:"user", content:prompt }], temperature:0.7, max_tokens:Math.min(7500,n*330), stream:false })
     });
     const raw = await upstream.text();
-    if (!upstream.ok) { console.error("NVIDIA API error", upstream.status, raw.slice(0,1000)); return res.status(502).json({ error:"The AI provider could not generate questions. Please try again." }); }
+    if (!upstream.ok) { console.error("OpenRouter API error", upstream.status, raw.slice(0,1000)); return res.status(502).json({ error:"The AI provider could not generate questions. Please try again." }); }
     const data = JSON.parse(raw); const content = data.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new Error("Empty AI response");
     const clean = content.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim();
